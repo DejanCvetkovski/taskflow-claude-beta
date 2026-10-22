@@ -15,6 +15,10 @@ const EMPTY_TEXT: Record<Filter, string> = {
   completed: 'No completed tasks yet.',
 };
 
+function matchesFilter(todo: Todo, filter: Filter): boolean {
+  return filter === 'all' ? true : filter === 'active' ? !todo.completed : todo.completed;
+}
+
 export default function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [load, setLoad] = useState<LoadState>({ status: 'loading' });
@@ -48,24 +52,30 @@ export default function App() {
     setTodos((prev) => [created, ...prev]);
   }
 
+  // When a row leaves the visible list its focused control unmounts, so focus the
+  // next visible row's checkbox, else the previous one, else the New task input.
+  function focusTargetAfterRemoving(id: string): string {
+    const index = visible.findIndex((t) => t.id === id);
+    const next = visible[index + 1] ?? visible[index - 1];
+    return next ? checkboxId(next.id) : NEW_TODO_ID;
+  }
+
   async function handleUpdate(id: string, body: TodoUpdate) {
+    const target = focusTargetAfterRemoving(id);
     const updated = await api.updateTodo(id, body);
     setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    if (!matchesFilter(updated, filter)) setFocusId(target);
   }
 
   async function handleDelete(id: string) {
-    // The deleted row's focused button unmounts, so move focus to the next row, else the input.
-    const index = visible.findIndex((t) => t.id === id);
-    const next = visible[index + 1] ?? visible[index - 1];
+    const target = focusTargetAfterRemoving(id);
     await api.deleteTodo(id);
     setTodos((prev) => prev.filter((t) => t.id !== id));
-    setFocusId(next ? checkboxId(next.id) : NEW_TODO_ID);
+    setFocusId(target);
   }
 
   const activeCount = todos.filter((t) => !t.completed).length;
-  const visible = todos.filter((t) =>
-    filter === 'all' ? true : filter === 'active' ? !t.completed : t.completed,
-  );
+  const visible = todos.filter((t) => matchesFilter(t, filter));
 
   return (
     <main className="app">

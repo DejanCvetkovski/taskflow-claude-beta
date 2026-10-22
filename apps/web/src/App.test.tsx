@@ -227,4 +227,19 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }));
     await waitFor(() => expect(screen.getByLabelText('New task')).toHaveFocus());
   });
+
+  it('moves focus to the next row when a toggled task leaves the filter', async () => {
+    const eggs = makeTodo({ id: '44444444-4444-4444-8444-444444444444', title: 'Buy eggs' });
+    await renderLoaded([milk, eggs], jsonResponse({ ...milk, completed: true }), jsonResponse({ ...eggs, completed: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Active' }));
+
+    screen.getByRole('checkbox', { name: /buy milk/i }).focus();
+    await userEvent.keyboard(' ');
+    await waitFor(() => expect(screen.queryByText('Buy milk')).not.toBeInTheDocument());
+    expect(screen.getByRole('checkbox', { name: /buy eggs/i })).toHaveFocus();
+
+    await userEvent.keyboard(' ');
+    expect(await screen.findByText(/no active tasks/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('New task')).toHaveFocus();
+  });
 });
