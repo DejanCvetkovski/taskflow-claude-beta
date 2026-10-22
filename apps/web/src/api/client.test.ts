@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { jsonResponse, makeTodo, mockFetch } from '../test/fetchMock';
-import { api, ApiError, GENERIC_ERROR } from './client';
+import { api, ApiError, GENERIC_ERROR, UNREACHABLE_ERROR } from './client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -48,5 +48,10 @@ describe('api client', () => {
   it('reports a network failure', async () => {
     mockFetch(new TypeError('Failed to fetch'));
     await expect(api.listTodos()).rejects.toMatchObject({ status: 0 });
+  });
+
+  it('treats a 5xx with no JSON body as the server being unreachable', async () => {
+    mockFetch(new Response('', { status: 500 }));
+    await expect(api.listTodos()).rejects.toMatchObject({ status: 500, message: UNREACHABLE_ERROR });
   });
 });

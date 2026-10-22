@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTitle } from './validation';
+import { titleLength, validateTitle } from './validation';
 
 describe('validateTitle', () => {
   it('rejects empty and whitespace-only titles', () => {
@@ -14,5 +14,11 @@ describe('validateTitle', () => {
 
   it('rejects titles longer than 120 characters', () => {
     expect(validateTitle('x'.repeat(121))).toMatch(/120 characters or fewer/);
+  });
+
+  it('counts characters as code points, so emoji count once', () => {
+    expect(titleLength('😀'.repeat(100))).toBe(100);
+    expect(validateTitle('😀'.repeat(120))).toBeNull();
+    expect(validateTitle('😀'.repeat(121))).toMatch(/currently 121/);
   });
 });

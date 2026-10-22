@@ -162,4 +162,69 @@ describe('App', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/no longer exists/i);
     expect(screen.getByText('Buy milk')).toBeInTheDocument();
   });
+
+  it('keeps focus in the input after creating, so another task can be typed', async () => {
+    const created = makeTodo({ id: '33333333-3333-4333-8333-333333333333', title: 'First' });
+    await renderLoaded([], jsonResponse(created, 201));
+    const input = screen.getByLabelText('New task');
+    await userEvent.type(input, 'First{Enter}');
+    await screen.findByText('First', { selector: '.todo-title' });
+    expect(input).toHaveFocus();
+  });
+
+  it('accepts a 100-emoji title and does not truncate it', async () => {
+    const title = '😀'.repeat(100);
+    const fetchFn = await renderLoaded([], jsonResponse(makeTodo({ title }), 201));
+    const input = screen.getByLabelText('New task');
+    expect(input).not.toHaveAttribute('maxLength');
+    await userEvent.click(input);
+    await userEvent.paste(title);
+    await userEvent.keyboard('{Enter}');
+    await screen.findByText(title, { selector: '.todo-title' });
+    expect(fetchFn.mock.calls[1][1]).toMatchObject({ body: JSON.stringify({ title }) });
+  });
+
+  it('keeps focus on the checkbox through a toggle', async () => {
+    await renderLoaded([milk], jsonResponse({ ...milk, completed: true }));
+    const checkbox = screen.getByRole('checkbox', { name: /buy milk/i });
+    checkbox.focus();
+    await userEvent.keyboard(' ');
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /buy milk/i })).toBeChecked());
+    expect(screen.getByRole('checkbox', { name: /buy milk/i })).toHaveFocus();
+  });
+
+  it('focuses the Edit button after Save and after Cancel', async () => {
+    await renderLoaded([milk], jsonResponse({ ...milk, title: 'Buy oat milk' }));
+    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: /edit “buy milk”/i })).toHaveFocus();
+
+    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
+    await userEvent.clear(screen.getByLabelText(/edit title/i));
+    await userEvent.type(screen.getByLabelText(/edit title/i), 'Buy oat milk{Enter}');
+    expect(await screen.findByRole('button', { name: /edit “buy oat milk”/i })).toHaveFocus();
+  });
+
+  it('focuses No when the delete confirmation opens, so a second Enter does not delete', async () => {
+    const fetchFn = await renderLoaded([milk]);
+    screen.getByRole('button', { name: /delete “buy milk”/i }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: /no, keep/i })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByText('Buy milk')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete “buy milk”/i })).toHaveFocus();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves focus to the next row after delete, and to the input when the list empties', async () => {
+    await renderLoaded([milk, report], jsonResponse(null, 204), jsonResponse(null, 204));
+
+    await userEvent.click(screen.getByRole('button', { name: /delete “buy milk”/i }));
+    await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }));
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /write report/i })).toHaveFocus());
+
+    await userEvent.click(screen.getByRole('button', { name: /delete “write report”/i }));
+    await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }));
+    await waitFor(() => expect(screen.getByLabelText('New task')).toHaveFocus());
+  });
 });
