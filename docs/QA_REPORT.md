@@ -342,6 +342,365 @@ All in `docs/qa/`.
 - Browsers other than Chromium, and a real touch device.
 - Colour contrast and dark mode were not measured.
 
+## Addendum: round 2 re-check of the frontend fixes (PR #7)
+
+Re-checked on 2026-10-22 at `bb2508f`, the head of PR #7 (`claude/project-thread-tyjxi3`). PR #7 was merged while this round was running. `main` at `5219693` has a tree under `apps/` identical to `bb2508f` (`git diff --stat bb2508f origin/main -- apps/` is empty), and `npm run typecheck`, `npm test` (29 passed) and `npm run build` were re-run on `main` with the same results, so these findings apply to current `main`. The scope was findings 1, 2, 3, 4 and 7 plus a spot check of R1–R6. Findings 5 and 6 were docs-only and were merged through PR #6, so they are not re-tested here. The PR head has no `apps/api` changes compared with `main`. The real FastAPI + MongoDB 7.0.34 backend from round 1 was used. No app code was changed.
+
+| # | Finding | Verdict | Evidence |
+| --- | --- | --- | --- |
+| 1 | Keyboard focus lost after mutations | **Fixed** for every case in the round-1 repro; one new case is open (8 below) | At 1280 px and 375 px: focus stays in New task after Enter, and three tasks were added by typing alone. Focus stays on the checkbox after Space, and a second Space toggles back. Focus returns to Edit after Save, Escape and Cancel. Delete moves focus to No, and No returns it to Delete. Yes moves focus to the next row's checkbox, or to the previous row's when the last row is deleted, or to New task when the list empties. Pressing Enter twice quickly on Add sends one POST. |
+| 2 | Title length counted in UTF-16 units | **Fixed** | 100 and 120 emoji are accepted, and the 100-emoji title is stored intact by the API. 121 emoji are rejected with "(currently 121)". A 200-character paste is no longer truncated and reports "(currently 200)". |
+| 3 | Generic message with the API down | **Fixed** | With uvicorn stopped, the Vite proxy returns 500 and the UI shows "Could not load tasks. Could not reach the server. Check your connection and try again." at both widths. Retry recovers once the API is back. With mongod stopped instead, the API's own 500 `{"detail":"Internal server error"}` still shows the generic message, which is correct. |
+| 4 | Cramped layout at 375 px | **Fixed** | At 375 px the actions now sit below the title, the title column is 280 px wide (95 px in round 1), the edit field is 317 px wide (about 130 px in round 1), and nothing overflows horizontally. At 1280 px the actions stay on the title row. |
+| 7 | Double Enter on Delete deletes | **Fixed** | Focus now lands on No, so pressing Enter twice keeps the task. Yes is one Shift+Tab away. |
+
+### 8. New, Low (apps/web): focus is lost when a toggled task leaves the current filter
+
+To reproduce, open the Active filter, focus a task's checkbox and press Space. The task is completed and leaves the Active view. Its checkbox unmounts, so focus falls to `<body>`, at both 1280 px and 375 px. The round-1 reproduction toggled in the All view, so this case was not covered then. A suggested fix is the same next-row / previous-row / New task fallback that `handleDelete` now uses.
+
+### Round 2 commands and results
+
+```sh
+git checkout bb2508f                     # PR #7 head
+cd apps/web && npm ci                    # -> exit 0
+npm run typecheck                        # -> exit 0
+npm test                                 # -> 3 files, 29 tests passed (validation 4, client 7, App 18)
+npm run build                            # -> exit 0, dist/assets/index-*.js 150.15 kB (48.58 kB gzip)
+# Vite restarted on the PR head; uvicorn + mongod as in round 1
+NODE_PATH=/opt/node22/lib/node_modules node recheck.js main docs/qa      # -> 45 passed, 2 failed (both are finding 8)
+#   stop uvicorn; the Vite proxy then returns 500 for /api/todos
+node recheck.js apidown docs/qa          # -> 3 passed (restarts the API itself)
+#   stop mongod, API left running
+node recheck.js dbdown docs/qa           # -> 1 passed
+#   start mongod; spot-check R1–R6 by re-running the round-1 script on an empty database
+node e2e.js main docs/qa                 # -> 58 passed, 0 failed
+node e2e.js verify:r2-reload docs/qa     # -> 1 passed (same list after reload)
+```
+
+The round-1 script was adjusted in two places because the fixes changed behaviour it relied on. Now that the 100-emoji title is created, the script deletes it through the UI so the later list assertions still hold. Focus now lands on No after Delete, so the keyboard-delete step uses Shift+Tab to reach Yes. Its five former FAILs (finding 2 and the four focus checks) now pass. The round-1 screenshots were left as they were, and the round-2 screenshots are the `docs/qa/r2-*.png` files.
+
+### Spot check of R1–R6
+
+| Req | Verdict |
+| --- | --- |
+| R1 | Pass: loading, empty, newest first, creation time, error + Retry |
+| R2 | Pass: Add and Enter, trimming, client and server validation messages |
+| R3 | Pass: toggle, strike-through, persisted |
+| R4 | Pass: Save, Cancel, Escape, validation, persisted |
+| R5 | Pass: confirm Yes / No, gone after reload |
+| R6 | Pass: All / Active / Completed, count, filter consistency |
+
+### Round 2 output
+
+```text
+PASS 1 @1280 focus stays in New task input after keyboard create
+PASS 1 @1280 three tasks added by typing + Enter only
+PASS 1 @1280 Enter pressed twice quickly sends one POST
+PASS 1 @1280 only one "Once" in list
+PASS 1 @1280 focus stays on checkbox after Space toggle
+PASS 1 @1280 second Space toggles back without re-focusing
+PASS 1 @1280 focus on Edit button after Save
+PASS 1 @1280 focus on Edit button after Escape
+PASS 1 @1280 focus on Edit button after Cancel
+PASS 1 @1280 title unchanged after Escape/Cancel
+PASS 1/7 @1280 focus moves to No after Delete
+PASS 7 @1280 Enter twice on Delete keeps the task
+PASS 1 @1280 focus back on Delete after No
+PASS 1 @1280 Shift+Tab from No reaches Yes
+PASS 1 @1280 focus on next row checkbox after delete
+PASS 1 @1280 deleting the last row focuses the previous row
+PASS 1 @1280 deleting the only row focuses New task input
+INFO @1280 focus after toggling a task out of the Active filter: BODY
+FAIL 1 @1280 focus not lost when a toggled task leaves the filter  [BODY]
+PASS 1 @375 focus stays in New task input after keyboard create
+PASS 1 @375 three tasks added by typing + Enter only
+PASS 1 @375 Enter pressed twice quickly sends one POST
+PASS 1 @375 only one "Once" in list
+PASS 1 @375 focus stays on checkbox after Space toggle
+PASS 1 @375 second Space toggles back without re-focusing
+PASS 1 @375 focus on Edit button after Save
+PASS 1 @375 focus on Edit button after Escape
+PASS 1 @375 focus on Edit button after Cancel
+PASS 1 @375 title unchanged after Escape/Cancel
+PASS 1/7 @375 focus moves to No after Delete
+PASS 7 @375 Enter twice on Delete keeps the task
+PASS 1 @375 focus back on Delete after No
+PASS 1 @375 Shift+Tab from No reaches Yes
+PASS 1 @375 focus on next row checkbox after delete
+PASS 1 @375 deleting the last row focuses the previous row
+PASS 1 @375 deleting the only row focuses New task input
+INFO @375 focus after toggling a task out of the Active filter: BODY
+FAIL 1 @375 focus not lost when a toggled task leaves the filter  [BODY]
+PASS 2 100-emoji title accepted by UI and created
+PASS 2 100-emoji title stored by API intact
+PASS 2 120-emoji title (limit) accepted
+PASS 2 121-emoji title rejected with "currently 121"
+PASS 2 long paste not truncated (no maxLength)
+PASS 2 200-char paste reports "currently 200"
+INFO 375 layout: {"titleW":280,"actionsTop":271,"titleBottom":261,"overflow":0}
+PASS 4 375px actions sit below the title
+PASS 4 375px title column at least 250px wide
+PASS 4 375px no horizontal overflow
+INFO 375 edit field width: 317px
+PASS 4 375px edit field at least 250px wide
+PASS 4 1280px actions remain on the title row
+
+main: 45 passed, 2 failed
+
+INFO @1280 API stopped: "Could not load tasks. Could not reach the server. Check your connection and try again."
+PASS 3 @1280 API-down message says the server could not be reached
+INFO @375 API stopped: "Could not load tasks. Could not reach the server. Check your connection and try again."
+PASS 3 @375 API-down message says the server could not be reached
+PASS 3 Retry recovers once the API is back
+
+apidown: 3 passed, 0 failed
+
+INFO mongod stopped, API up: "Could not load tasks. Something went wrong. Please try again."
+PASS 3 API 500 with JSON detail still shows the generic message (not "could not reach")
+
+dbdown: 1 passed, 0 failed
+```
+
+<details><summary><code>recheck.js</code></summary>
+
+```js
+// Round-2 re-check of QA findings 1, 2, 3, 4, 7. Usage: node recheck.js <phase> <shotDir>
+const { chromium } = require('playwright');
+const fs = require('fs');
+const { spawn } = require('child_process');
+const APP = 'http://localhost:5173/';
+const API = 'http://localhost:8000/api';
+const phase = process.argv[2];
+const SHOTS = process.argv[3];
+let pass = 0, fail = 0;
+const check = (n, c, d = '') => { c ? pass++ : fail++; console.log(`${c ? 'PASS' : 'FAIL'} ${n}${!c && d ? `  [${d}]` : ''}`); };
+const info = (m) => console.log('INFO ' + m);
+const focused = (page) => page.evaluate(() => { const e = document.activeElement; return e.tagName === 'BODY' ? 'BODY' : (e.getAttribute('aria-label') || e.id || e.textContent.trim()); });
+const titles = (page) => page.locator('.todo-list .todo-title').allTextContents();
+async function waitTitle(page, t, present = true) {
+  await page.waitForFunction(([t, present]) => [...document.querySelectorAll('.todo-title')].some((e) => e.textContent === t) === present, [t, present]);
+}
+
+async function focusAndKeyboard(browser, width) {
+  const tag = `@${width}`;
+  const ctx = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 500, hasTouch: width < 500 });
+  const page = await ctx.newPage();
+  await page.goto(APP);
+  await page.getByText('No tasks yet').waitFor();
+  const posts = [];
+  page.on('request', (r) => r.method() === 'POST' && posts.push(r.url()));
+
+  // 1a create: focus stays in input, second task typed without Tab
+  await page.locator('body').click({ position: { x: 2, y: 2 } });
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('First');
+  await page.keyboard.press('Enter');
+  await waitTitle(page, 'First');
+  check(`1 ${tag} focus stays in New task input after keyboard create`, (await focused(page)) === 'new-todo', await focused(page));
+  await page.keyboard.type('Second');
+  await page.keyboard.press('Enter');
+  await waitTitle(page, 'Second');
+  await page.keyboard.type('Third');
+  await page.keyboard.press('Enter');
+  await waitTitle(page, 'Third');
+  check(`1 ${tag} three tasks added by typing + Enter only`, JSON.stringify(await titles(page)) === '["Third","Second","First"]', JSON.stringify(await titles(page)));
+  // double Enter while busy creates only one
+  const before = posts.length;
+  await page.keyboard.type('Once');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await waitTitle(page, 'Once');
+  await page.waitForTimeout(400);
+  check(`1 ${tag} Enter pressed twice quickly sends one POST`, posts.length - before === 1, `${posts.length - before} POSTs`);
+  check(`1 ${tag} only one "Once" in list`, (await titles(page)).filter((t) => t === 'Once').length === 1);
+
+  // 1b toggle: Space twice on the same checkbox
+  const cb = page.locator('li.todo', { hasText: 'Second' }).locator('input[type=checkbox]');
+  await cb.focus();
+  await page.keyboard.press('Space');
+  await page.getByRole('checkbox', { name: 'Mark “Second” as active' }).waitFor();
+  check(`1 ${tag} focus stays on checkbox after Space toggle`, (await focused(page)) === 'Mark “Second” as active', await focused(page));
+  await page.keyboard.press('Space');
+  await page.getByRole('checkbox', { name: 'Mark “Second” as completed' }).waitFor();
+  check(`1 ${tag} second Space toggles back without re-focusing`, true);
+
+  // 1c edit: Save and Cancel return focus to Edit
+  await page.getByRole('button', { name: 'Edit “First”' }).focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('First edited');
+  await page.keyboard.press('Enter');
+  await waitTitle(page, 'First edited');
+  check(`1 ${tag} focus on Edit button after Save`, (await focused(page)) === 'Edit “First edited”', await focused(page));
+  await page.keyboard.press('Enter');
+  await page.keyboard.type(' x');
+  await page.keyboard.press('Escape');
+  check(`1 ${tag} focus on Edit button after Escape`, (await focused(page)) === 'Edit “First edited”', await focused(page));
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Cancel' }).focus();
+  await page.keyboard.press('Enter');
+  check(`1 ${tag} focus on Edit button after Cancel`, (await focused(page)) === 'Edit “First edited”', await focused(page));
+  check(`1 ${tag} title unchanged after Escape/Cancel`, (await titles(page)).includes('First edited') && !(await titles(page)).some((t) => t.endsWith(' x')));
+
+  // 1d + 7 delete: focus on No, double Enter keeps the task, No returns to Delete, Yes moves to next row
+  await page.getByRole('button', { name: 'Delete “Second”' }).focus();
+  await page.keyboard.press('Enter');
+  check(`1/7 ${tag} focus moves to No after Delete`, (await focused(page)) === 'No, keep “Second”', await focused(page));
+  await page.screenshot({ path: `${SHOTS}/r2-${width}-delete-confirm-focus.png` });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  check(`7 ${tag} Enter twice on Delete keeps the task`, (await titles(page)).includes('Second'));
+  check(`1 ${tag} focus back on Delete after No`, (await focused(page)) === 'Delete “Second”', await focused(page));
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Tab');
+  check(`1 ${tag} Shift+Tab from No reaches Yes`, (await focused(page)) === 'Yes, delete “Second”', await focused(page));
+  await page.keyboard.press('Enter');
+  await waitTitle(page, 'Second', false);
+  check(`1 ${tag} focus on next row checkbox after delete`, (await focused(page)) === 'Mark “First edited” as completed', await focused(page));
+  // delete the last row -> previous row
+  await page.getByRole('button', { name: 'Delete “First edited”' }).focus();
+  await page.keyboard.press('Enter'); await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Enter');
+  await waitTitle(page, 'First edited', false);
+  check(`1 ${tag} deleting the last row focuses the previous row`, (await focused(page)) === 'Mark “Third” as completed', await focused(page));
+  // delete the remaining rows; the final delete -> New task input
+  for (const t of ['Third', 'Once']) {
+    await page.getByRole('button', { name: `Delete “${t}”` }).focus();
+    await page.keyboard.press('Enter'); await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Enter');
+    await waitTitle(page, t, false);
+  }
+  check(`1 ${tag} deleting the only row focuses New task input`, (await focused(page)) === 'new-todo', await focused(page));
+
+  // Not in the original repro: toggle a task out of the current filter by keyboard
+  await page.keyboard.type('Filter me'); await page.keyboard.press('Enter'); await waitTitle(page, 'Filter me');
+  await page.keyboard.type('Stay'); await page.keyboard.press('Enter'); await waitTitle(page, 'Stay');
+  await page.getByRole('button', { name: 'Active', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Mark “Filter me” as completed' }).focus();
+  await page.keyboard.press('Space');
+  await waitTitle(page, 'Filter me', false);
+  info(`${tag} focus after toggling a task out of the Active filter: ${await focused(page)}`);
+  check(`1 ${tag} focus not lost when a toggled task leaves the filter`, (await focused(page)) !== 'BODY', await focused(page));
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  for (const t of await (await page.request.get(`${API}/todos`)).json()) await page.request.delete(`${API}/todos/${t.id}`);
+  await ctx.close();
+}
+
+async function emoji(browser) {
+  const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+  await page.goto(APP);
+  await page.locator('section[aria-label=Tasks]').waitFor();
+  const input = page.getByLabel('New task');
+  const e100 = '\u{1F600}'.repeat(100);
+  await input.fill(e100);
+  await input.press('Enter');
+  await waitTitle(page, e100);
+  check('2 100-emoji title accepted by UI and created', true);
+  const srv = await (await page.request.get(`${API}/todos`)).json();
+  check('2 100-emoji title stored by API intact', srv.some((t) => t.title === e100));
+  await input.fill('\u{1F600}'.repeat(120));
+  await input.press('Enter');
+  await page.waitForTimeout(300);
+  const ok120 = (await titles(page)).includes('\u{1F600}'.repeat(120));
+  check('2 120-emoji title (limit) accepted', ok120);
+  await input.fill('\u{1F600}'.repeat(121));
+  await input.press('Enter');
+  const msg = await page.locator('#new-todo-error').textContent();
+  check('2 121-emoji title rejected with "currently 121"', /currently 121\)/.test(msg), msg);
+  await input.fill('a'.repeat(200));
+  check('2 long paste not truncated (no maxLength)', (await input.inputValue()).length === 200, String((await input.inputValue()).length));
+  await input.press('Enter');
+  check('2 200-char paste reports "currently 200"', /currently 200\)/.test(await page.locator('#new-todo-error').textContent()));
+  await page.screenshot({ path: `${SHOTS}/r2-1280-emoji.png` });
+  // clean up the emoji rows
+  for (const t of srv.concat(await (await page.request.get(`${API}/todos`)).json())) if (t.title.startsWith('\u{1F600}')) await page.request.delete(`${API}/todos/${t.id}`).catch(() => {});
+}
+
+async function layout(browser) {
+  for (const t of ['Buy oat milk', 'A very long title that keeps going to check wrapping on narrow screens without breaking the layout ok', 'Review pull request #7'])
+    await (await browser.newContext()).request.post(`${API}/todos`, { data: { title: t } });
+  const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto(APP);
+  await page.locator('.todo-list').waitFor();
+  const m = await page.evaluate(() => {
+    const li = document.querySelector('li.todo');
+    const title = li.querySelector('.todo-body').getBoundingClientRect();
+    const actions = li.querySelector('.todo-actions').getBoundingClientRect();
+    return { titleW: Math.round(title.width), actionsTop: Math.round(actions.top), titleBottom: Math.round(title.bottom), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  });
+  info('375 layout: ' + JSON.stringify(m));
+  check('4 375px actions sit below the title', m.actionsTop >= m.titleBottom, JSON.stringify(m));
+  check('4 375px title column at least 250px wide', m.titleW >= 250, String(m.titleW));
+  check('4 375px no horizontal overflow', m.overflow <= 0, String(m.overflow));
+  await page.screenshot({ path: `${SHOTS}/r2-375-list.png`, fullPage: true });
+  const first = (await titles(page))[0];
+  await page.getByRole('button', { name: `Edit “${first}”` }).click();
+  const w = await page.getByLabel(`Edit title for “${first}”`).evaluate((e) => Math.round(e.getBoundingClientRect().width));
+  info(`375 edit field width: ${w}px`);
+  check('4 375px edit field at least 250px wide', w >= 250, String(w));
+  await page.screenshot({ path: `${SHOTS}/r2-375-edit.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: `Delete “${first}”` }).click();
+  await page.screenshot({ path: `${SHOTS}/r2-375-delete-confirm.png`, fullPage: true });
+  await page.getByRole('button', { name: `No, keep “${first}”` }).click();
+  await ctx.close();
+  const d = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const dp = await d.newPage(); await dp.goto(APP); await dp.locator('.todo-list').waitFor();
+  const dm = await dp.evaluate(() => { const li = document.querySelector('li.todo'); return { actionsTop: Math.round(li.querySelector('.todo-actions').getBoundingClientRect().top), liTop: Math.round(li.getBoundingClientRect().top) }; });
+  check('4 1280px actions remain on the title row', dm.actionsTop - dm.liTop < 20, JSON.stringify(dm));
+  await dp.screenshot({ path: `${SHOTS}/r2-1280-list.png`, fullPage: true });
+  await d.close();
+}
+
+async function apiDown(browser) {
+  for (const width of [1280, 375]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 500 });
+    const page = await ctx.newPage();
+    await page.goto(APP);
+    const alert = page.getByRole('alert');
+    await alert.waitFor();
+    const text = (await alert.textContent()).replace('Retry', '').trim();
+    info(`@${width} API stopped: "${text}"`);
+    check(`3 @${width} API-down message says the server could not be reached`, text === 'Could not load tasks. Could not reach the server. Check your connection and try again.', text);
+    await page.screenshot({ path: `${SHOTS}/r2-${width}-api-down.png` });
+    await ctx.close();
+  }
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(APP);
+  await page.getByRole('button', { name: 'Retry' }).waitFor();
+  const api = spawn('.venv/bin/uvicorn', ['app.main:app', '--port', '8000'], { cwd: process.env.API_DIR, stdio: ['ignore', fs.openSync(process.env.API_LOG, 'a'), fs.openSync(process.env.API_LOG, 'a')], detached: true });
+  api.unref();
+  for (let i = 0; i < 50; i++) { try { if ((await page.request.get(`${API}/health`)).ok()) break; } catch {} await page.waitForTimeout(200); }
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await page.locator('section[aria-label=Tasks]').waitFor();
+  check('3 Retry recovers once the API is back', true);
+  await ctx.close();
+}
+
+async function dbDown(browser) {
+  const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+  await page.goto(APP);
+  await page.getByRole('alert').waitFor({ timeout: 20000 });
+  const text = (await page.getByRole('alert').textContent()).replace('Retry', '').trim();
+  info(`mongod stopped, API up: "${text}"`);
+  check('3 API 500 with JSON detail still shows the generic message (not "could not reach")', text === 'Could not load tasks. Something went wrong. Please try again.', text);
+}
+
+(async () => {
+  const browser = await chromium.launch();
+  try {
+    if (phase === 'main') { await focusAndKeyboard(browser, 1280); await focusAndKeyboard(browser, 375); await emoji(browser); await layout(browser); }
+    if (phase === 'apidown') await apiDown(browser);
+    if (phase === 'dbdown') await dbDown(browser);
+  } catch (e) { fail++; console.log('FAIL exception: ' + e.message.split('\n')[0]); }
+  await browser.close();
+  console.log(`\n${phase}: ${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+})();
+```
+
+</details>
+
 ## QA scripts
 
 Kept out of the app and its dependencies; included here so the run can be repeated.
