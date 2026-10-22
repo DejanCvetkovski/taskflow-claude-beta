@@ -1,0 +1,219 @@
+openapi: 3.1.0
+info:
+  title: TaskFlow API
+  version: 1.0.0
+  description: |
+    Source of truth for the TaskFlow MVP. Backend (apps/api) and frontend
+    (apps/web) both implement against this file. Changes go through the
+    project coordinator and the founder before either side edits code.
+
+    Conventions:
+    - Base path `/api`, JSON only, `snake_case` properties.
+    - IDs are UUID v4 strings.
+    - Timestamps are ISO 8601 UTC with a `Z` suffix and second precision,
+      e.g. `2026-10-21T12:00:00Z`.
+    - `title` is trimmed server-side; after trimming it must be 1-120
+      characters. The stored and returned title is the trimmed value.
+    - Strict types: `title` must be a JSON string and `completed` a JSON
+      boolean. `null`, `"true"` or `1` are rejected with 422.
+    - Unknown request fields are ignored.
+    - Malformed JSON or a non-object body is rejected with 422.
+    - Responses never contain stack traces.
+servers:
+  - url: http://localhost:8000
+    description: Local FastAPI server (the Vite dev server proxies /api here)
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/todos:
+    get:
+      operationId: listTodos
+      summary: List all TODOs
+      description: Newest `created_at` first; ties broken by `id` descending.
+      responses:
+        '200':
+          description: All TODOs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Todo'
+    post:
+      operationId: createTodo
+      summary: Create a TODO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoCreate'
+      responses:
+        '201':
+          description: Created. `completed` is false and `created_at` equals `updated_at`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/todos/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: A well-formed UUID that does not exist returns 404; a value that is not a UUID returns 422.
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateTodo
+      summary: Update title and/or completion
+      description: |
+        At least one of `title` or `completed` must be present. A body with
+        neither (including `{}` or only unknown fields) returns 422.
+        `updated_at` is refreshed on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoUpdate'
+      responses:
+        '200':
+          description: Updated TODO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteTodo
+      summary: Delete a TODO
+      responses:
+        '204':
+          description: Deleted; empty body
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    Todo:
+      type: object
+      additionalProperties: false
+      required: [id, title, completed, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+          example: Review the API contract
+        completed:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-10-21T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-10-21T12:00:00Z'
+    TodoCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: Trimmed server-side, then 1-120 characters.
+          example: Buy milk
+    TodoUpdate:
+      type: object
+      minProperties: 1
+      description: At least one of `title` or `completed` is required.
+      properties:
+        title:
+          type: string
+          description: Trimmed server-side, then 1-120 characters.
+        completed:
+          type: boolean
+    NotFoundError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          const: Todo not found
+    ValidationError:
+      type: object
+      required: [detail]
+      description: |
+        FastAPI's standard validation shape. Custom checks (trimmed title
+        length, empty PATCH) use the same list shape so clients handle one
+        format. The UI shows the first `msg`.
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            required: [loc, msg, type]
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              msg:
+                type: string
+              type:
+                type: string
+      example:
+        detail:
+          - loc: [body, title]
+            msg: Title must be 1-120 characters after trimming
+            type: value_error
+    InternalError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          const: Internal server error
+  responses:
+    NotFound:
+      description: No TODO with this id
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFoundError'
+    ValidationError:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
