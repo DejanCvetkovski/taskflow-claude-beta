@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { errorMessage } from '../api/client';
-import { TITLE_MAX, validateTitle } from '../validation';
+import { validateTitle } from '../validation';
 
 interface Props {
   onAdd: (title: string) => Promise<void>;
@@ -13,6 +13,7 @@ export function AddTodoForm({ onAdd }: Props) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     const problem = validateTitle(title);
     if (problem) {
       setError(problem);
@@ -41,16 +42,16 @@ export function AddTodoForm({ onAdd }: Props) {
           type="text"
           placeholder="What needs to be done?"
           value={title}
-          maxLength={TITLE_MAX + 50}
           onChange={(e) => {
             setTitle(e.target.value);
             if (error) setError(null);
           }}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? 'new-todo-error' : undefined}
-          disabled={busy}
+          readOnly={busy}
         />
-        <button type="submit" className="btn btn-primary" disabled={busy}>
+        {/* aria-disabled rather than disabled while busy, so focus is not dropped. */}
+        <button type="submit" className="btn btn-primary" aria-disabled={busy || undefined}>
           {busy ? 'Adding…' : 'Add'}
         </button>
       </div>

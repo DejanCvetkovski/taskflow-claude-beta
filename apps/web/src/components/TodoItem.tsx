@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { errorMessage } from '../api/client';
 import type { Todo, TodoUpdate } from '../api/types';
 import { formatCreated } from '../format';
-import { TITLE_MAX, validateTitle } from '../validation';
+import { validateTitle } from '../validation';
 
 interface Props {
   todo: Todo;
@@ -11,16 +11,41 @@ interface Props {
 }
 
 type Mode = 'view' | 'edit' | 'confirm-delete';
+type FocusTarget = 'edit' | 'delete' | 'no';
 
+export function checkboxId(todoId: string): string {
+  return `todo-check-${todoId}`;
+}
+
+// Controls use aria-disabled rather than disabled while a request is in flight,
+// because a disabled element drops keyboard focus to <body>.
 export function TodoItem({ todo, onUpdate, onDelete }: Props) {
   const [mode, setMode] = useState<Mode>('view');
   const [draft, setDraft] = useState(todo.title);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+  const noButton = useRef<HTMLButtonElement>(null);
+  const focusAfterRender = useRef<FocusTarget | null>(null);
   const errorId = `todo-error-${todo.id}`;
   const editId = `todo-edit-${todo.id}`;
 
+  useEffect(() => {
+    const target = focusAfterRender.current;
+    focusAfterRender.current = null;
+    if (target === 'edit') editButton.current?.focus();
+    if (target === 'delete') deleteButton.current?.focus();
+    if (target === 'no') noButton.current?.focus();
+  }, [mode]);
+
+  function switchMode(next: Mode, focus: FocusTarget | null = null) {
+    focusAfterRender.current = focus;
+    setMode(next);
+  }
+
   async function run(action: () => Promise<void>, after?: () => void) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -34,19 +59,22 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
   }
 
   function startEdit() {
+    if (busy) return;
     setDraft(todo.title);
     setError(null);
-    setMode('edit');
+    switchMode('edit');
   }
 
   function cancelEdit() {
+    if (busy) return;
     setDraft(todo.title);
     setError(null);
-    setMode('view');
+    switchMode('view', 'edit');
   }
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     const problem = validateTitle(draft);
     if (problem) {
       setError(problem);
@@ -54,10 +82,10 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
     }
     const title = draft.trim();
     if (title === todo.title) {
-      setMode('view');
+      switchMode('view', 'edit');
       return;
     }
-    void run(() => onUpdate(todo.id, { title }), () => setMode('view'));
+    void run(() => onUpdate(todo.id, { title }), () => switchMode('view', 'edit'));
   }
 
   return (
@@ -71,9 +99,8 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
             id={editId}
             type="text"
             value={draft}
-            maxLength={TITLE_MAX + 50}
             autoFocus
-            disabled={busy}
+            readOnly={busy}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
             onChange={(e) => setDraft(e.target.value)}
@@ -82,10 +109,10 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
             }}
           />
           <div className="todo-actions">
-            <button type="submit" className="btn btn-primary" disabled={busy}>
+            <button type="submit" className="btn btn-primary" aria-disabled={busy || undefined}>
               Save
             </button>
-            <button type="button" className="btn" onClick={cancelEdit} disabled={busy}>
+            <button type="button" className="btn" onClick={cancelEdit} aria-disabled={busy || undefined}>
               Cancel
             </button>
           </div>
@@ -93,10 +120,11 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
       ) : (
         <>
           <input
+            id={checkboxId(todo.id)}
             type="checkbox"
             className="todo-check"
             checked={todo.completed}
-            disabled={busy}
+            aria-disabled={busy || undefined}
             aria-label={`Mark “${todo.title}” as ${todo.completed ? 'active' : 'completed'}`}
             onChange={() => void run(() => onUpdate(todo.id, { completed: !todo.completed }))}
           />
@@ -113,18 +141,21 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
                 <button
                   type="button"
                   className="btn btn-danger"
-                  disabled={busy}
+                  aria-disabled={busy || undefined}
                   aria-label={`Yes, delete “${todo.title}”`}
                   onClick={() => void run(() => onDelete(todo.id))}
                 >
                   Yes
                 </button>
                 <button
+                  ref={noButton}
                   type="button"
                   className="btn"
-                  disabled={busy}
+                  aria-disabled={busy || undefined}
                   aria-label={`No, keep “${todo.title}”`}
-                  onClick={() => setMode('view')}
+                  onClick={() => {
+                    if (!busy) switchMode('view', 'delete');
+                  }}
                 >
                   No
                 </button>
@@ -132,22 +163,25 @@ export function TodoItem({ todo, onUpdate, onDelete }: Props) {
             ) : (
               <>
                 <button
+                  ref={editButton}
                   type="button"
                   className="btn"
-                  disabled={busy}
+                  aria-disabled={busy || undefined}
                   aria-label={`Edit “${todo.title}”`}
                   onClick={startEdit}
                 >
                   Edit
                 </button>
                 <button
+                  ref={deleteButton}
                   type="button"
                   className="btn"
-                  disabled={busy}
+                  aria-disabled={busy || undefined}
                   aria-label={`Delete “${todo.title}”`}
                   onClick={() => {
+                    if (busy) return;
                     setError(null);
-                    setMode('confirm-delete');
+                    switchMode('confirm-delete', 'no');
                   }}
                 >
                   Delete
