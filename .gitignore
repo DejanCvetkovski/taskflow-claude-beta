@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local data and env
+.env
+.env.*
+!.env.example
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
