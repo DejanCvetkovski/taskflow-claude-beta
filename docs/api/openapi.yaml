@@ -38,7 +38,11 @@ paths:
     get:
       operationId: listTodos
       summary: List all TODOs
-      description: Newest `created_at` first; ties broken by `id` descending.
+      description: |
+        Newest first by creation time. The server orders by its stored
+        `created_at` (millisecond precision), then `id` descending for exact
+        ties. Responses show `created_at` at second precision, so items
+        created within the same second can appear in any `id` order.
       responses:
         '200':
           description: All TODOs
