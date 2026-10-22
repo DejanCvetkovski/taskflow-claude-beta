@@ -48,7 +48,7 @@ founder's explicit approval.
 - Document: `{_id: "<uuid string>", title, completed, created_at, updated_at}`,
   dates as BSON UTC datetimes; the API maps `_id` -> `id` and formats dates as
   `YYYY-MM-DDTHH:MM:SSZ`. Index on `created_at` descending. List sorts
-  `created_at` desc, then `_id` desc.
+  stored `created_at` (ms precision) desc, then `_id` desc.
 - Validation exactly as in `openapi.yaml`: strict types, trim then 1-120, empty
   PATCH -> 422 in FastAPI's list shape, bad UUID path -> 422, missing -> 404
   `{"detail": "Todo not found"}`, unexpected errors -> 500 `{"detail": "Internal server error"}`.

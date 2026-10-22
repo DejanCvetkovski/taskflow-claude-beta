@@ -32,6 +32,9 @@ python3 -m venv .venv
 .venv/bin/uvicorn app.main:app --port 8000
 ```
 
+The API connects to MongoDB at startup and exits if it is unreachable, so
+start MongoDB first.
+
 Optional settings: `MONGODB_URI` (default `mongodb://localhost:27017`) and
 `MONGODB_DB` (default `taskflow`).
 
