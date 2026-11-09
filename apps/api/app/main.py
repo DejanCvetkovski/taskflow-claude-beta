@@ -42,7 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             client.close()
 
-    app = FastAPI(title="TaskFlow API", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="TaskFlow API", version="1.1.0", lifespan=lifespan)
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception) -> JSONResponse:
