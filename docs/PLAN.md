@@ -12,6 +12,13 @@ API contract: [`docs/api/openapi.yaml`](api/openapi.yaml).
 - **Database: MongoDB 7.0 (founder's decision, replaces the brief's SQLite).**
   Official `pymongo` driver (sync, no ODM), one `todos` collection.
 
+## Change log
+
+- 2026-11-09: Edit feature (brief's R4) removed at the founder's request.
+  `PATCH /api/todos/{id}` now only sets `completed`; a body with `title` is 422.
+  Work split: contract (coordinator) -> backend and frontend threads in parallel
+  -> integration -> independent QA.
+
 ## Roles and file ownership
 
 | Role | Runs in | Writes only | Delivers |
@@ -49,11 +56,11 @@ founder's explicit approval.
   dates as BSON UTC datetimes; the API maps `_id` -> `id` and formats dates as
   `YYYY-MM-DDTHH:MM:SSZ`. Index on `created_at` descending. List sorts
   stored `created_at` (ms precision) desc, then `_id` desc.
-- Validation exactly as in `openapi.yaml`: strict types, trim then 1-120, empty
-  PATCH -> 422 in FastAPI's list shape, bad UUID path -> 422, missing -> 404
+- Validation exactly as in `openapi.yaml`: strict types, trim then 1-120, PATCH
+  requires `completed` and rejects `title` -> 422 in FastAPI's list shape, bad UUID path -> 422, missing -> 404
   `{"detail": "Todo not found"}`, unexpected errors -> 500 `{"detail": "Internal server error"}`.
 - Tests run against a real `mongod` in a throwaway `taskflow_test_*` database
-  dropped afterwards. Cover: create, list order, PATCH title, PATCH completed,
+  dropped afterwards. Cover: create, list order, PATCH completed, PATCH with `title` rejected,
   delete, trim, empty/whitespace/121-char title, strict types, empty PATCH, 404,
   invalid UUID, and persistence via a new app instance and client on the same database.
 - Cloud sandbox: Docker is unavailable and MongoDB's download site is blocked;
@@ -65,7 +72,7 @@ founder's explicit approval.
 - Requests use relative `/api/...`; `vite.config.ts` proxies `/api` to `http://localhost:8000`.
 - Behaviour R1-R7 from the brief: loading, empty, error + Retry states; add via
   button or Enter; client-side trim + 1-120 check with helpful message; checkbox
-  toggle with strike-through; inline edit with Save / Cancel (Cancel restores);
+  toggle with strike-through; no title editing (removed 2026-11-09);
   inline delete confirm ("Delete? Yes / No"); All / Active / Completed filter;
   active count; created time via `Intl.DateTimeFormat`.
 - Non-optimistic updates: change the list only after the server responds.
