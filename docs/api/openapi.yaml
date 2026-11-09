@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: TaskFlow API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Source of truth for the TaskFlow MVP. Backend (apps/api) and frontend
     (apps/web) both implement against this file. Changes go through the
@@ -81,10 +81,13 @@ paths:
           format: uuid
     patch:
       operationId: updateTodo
-      summary: Update title and/or completion
+      summary: Set completion
       description: |
-        At least one of `title` or `completed` must be present. A body with
-        neither (including `{}` or only unknown fields) returns 422.
+        Only `completed` can be changed; titles cannot be edited after
+        creation (Edit feature removed on 2026-11-09). `completed` is
+        required, so `{}` or a body with only unknown fields returns 422.
+        A body that contains `title` returns 422 with the message
+        "Title cannot be changed", even when `completed` is also present.
         `updated_at` is refreshed on success.
       requestBody:
         required: true
@@ -157,14 +160,15 @@ components:
           example: Buy milk
     TodoUpdate:
       type: object
-      minProperties: 1
-      description: At least one of `title` or `completed` is required.
+      required: [completed]
+      description: |
+        `completed` is required. `title` is not allowed and returns 422;
+        other unknown fields are ignored.
       properties:
-        title:
-          type: string
-          description: Trimmed server-side, then 1-120 characters.
         completed:
           type: boolean
+      not:
+        required: [title]
     NotFoundError:
       type: object
       required: [detail]
@@ -177,7 +181,7 @@ components:
       required: [detail]
       description: |
         FastAPI's standard validation shape. Custom checks (trimmed title
-        length, empty PATCH) use the same list shape so clients handle one
+        length, PATCH rules) use the same list shape so clients handle one
         format. The UI shows the first `msg`.
       properties:
         detail:
