@@ -20,6 +20,13 @@ describe('api client', () => {
     expect((init!.headers as Record<string, string>)['Content-Type']).toBe('application/json');
   });
 
+  it('does not accept a title in an update', () => {
+    // Compile-time check, enforced by `npm run typecheck`: the contract rejects `title` on PATCH.
+    // @ts-expect-error title is not part of TodoUpdate
+    const body: Parameters<typeof api.updateTodo>[1] = { completed: true, title: 'x' };
+    expect(body).toBeDefined();
+  });
+
   it('resolves DELETE on 204 without parsing a body', async () => {
     mockFetch(jsonResponse(null, 204));
     await expect(api.deleteTodo('abc')).resolves.toBeUndefined();

@@ -205,13 +205,6 @@ input[aria-invalid='true'] {
   font-weight: 600;
 }
 
-.todo-edit {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .todo-error {
   flex-basis: 100%;
   margin: 0;
@@ -231,9 +224,5 @@ input[aria-invalid='true'] {
   .todo-actions {
     flex-basis: 100%;
     margin-left: 30px;
-  }
-
-  .todo-edit .todo-actions {
-    margin-left: 0;
   }
 }
