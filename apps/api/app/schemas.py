@@ -1,13 +1,12 @@
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Strict, field_validator, model_validator
+from pydantic import BaseModel, Strict, field_validator
+from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 TITLE_MAX_LENGTH = 120
 
 # Strict so that null, numbers and "true"-style strings are rejected with 422.
-# The PATCH fields default to None, but an explicit null is still validated
-# (and rejected) because Pydantic only skips validation for omitted fields.
 StrictTitle = Annotated[str, Strict()]
 StrictCompleted = Annotated[bool, Strict()]
 
@@ -32,25 +31,20 @@ class TodoCreate(BaseModel):
 
 
 class TodoUpdate(BaseModel):
-    title: StrictTitle = None
-    completed: StrictCompleted = None
+    # Titles cannot be edited after creation. `title` is declared only so that
+    # its presence (any value, including null) fails with a field-level 422 at
+    # ["body", "title"]. It is declared before `completed` so that its message
+    # is the first error when both rules fail. Other unknown fields are ignored.
+    title: SkipJsonSchema[Any] = None
+    completed: StrictCompleted
 
-    @field_validator("title")
+    @field_validator("title", mode="before")
     @classmethod
-    def _trim_title(cls, value: str) -> str:
-        return _clean_title(value)
-
-    @model_validator(mode="after")
-    def _require_a_field(self) -> "TodoUpdate":
-        if not self.model_fields_set & {"title", "completed"}:
-            raise PydanticCustomError(
-                "value_error",
-                "At least one of title or completed is required",
-            )
-        return self
+    def _reject_title(cls, value: Any) -> Any:
+        raise PydanticCustomError("value_error", "Title cannot be changed")
 
     def changes(self) -> dict[str, Any]:
-        return self.model_dump(include=self.model_fields_set & {"title", "completed"})
+        return {"completed": self.completed}
 
 
 class Todo(BaseModel):
