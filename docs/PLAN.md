@@ -26,7 +26,7 @@ API contract: [`docs/api/openapi.yaml`](api/openapi.yaml).
 | Product + Coordinator | Planning thread | `docs/PLAN.md`, `docs/api/openapi.yaml`, `README.md`, `.gitignore`, integration merges | Contract, briefs, integration, final report |
 | Backend | Backend thread | `apps/api/**` | FastAPI + MongoDB API, pytest suite |
 | Frontend | Frontend thread | `apps/web/**` | React UI, typed API client, Vitest tests |
-| QA | QA thread (fresh context) | `docs/QA_REPORT.md` | Independent verification, issues, evidence |
+| QA | QA thread (fresh context) | `docs/QA_REPORT.md`, `docs/qa/**` | Independent verification, issues, evidence |
 
 No thread edits `docs/api/openapi.yaml`. A needed contract change goes to the
 coordinator, who brings it to the founder before both sides change.
