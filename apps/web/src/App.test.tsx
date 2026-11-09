@@ -110,33 +110,12 @@ describe('App', () => {
     expect(await screen.findByText(/no active tasks/i)).toBeInTheDocument();
   });
 
-  it('edits a title with Save and restores it on Cancel', async () => {
-    const fetchFn = await renderLoaded([milk], jsonResponse({ ...milk, title: 'Buy oat milk' }));
-
-    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
-    const field = screen.getByLabelText(/edit title/i);
-    await userEvent.clear(field);
-    await userEvent.type(field, 'Something else');
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByText('Buy milk')).toBeInTheDocument();
-    expect(fetchFn).toHaveBeenCalledTimes(1);
-
-    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
-    expect(screen.getByLabelText(/edit title/i)).toHaveValue('Buy milk');
-    await userEvent.clear(screen.getByLabelText(/edit title/i));
-    await userEvent.type(screen.getByLabelText(/edit title/i), ' Buy oat milk ');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(await screen.findByText('Buy oat milk')).toBeInTheDocument();
-    expect(fetchFn.mock.calls[1][1]).toMatchObject({ method: 'PATCH', body: '{"title":"Buy oat milk"}' });
-  });
-
-  it('validates the edited title', async () => {
+  it('offers no way to edit a title', async () => {
     await renderLoaded([milk]);
-    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
-    await userEvent.clear(screen.getByLabelText(/edit title/i));
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(screen.getByRole('alert')).toHaveTextContent(/enter a task title/i);
+    expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+    await userEvent.dblClick(screen.getByText('Buy milk'));
+    expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
   });
 
   it('deletes after inline confirmation, and No keeps the todo', async () => {
@@ -191,18 +170,6 @@ describe('App', () => {
     await userEvent.keyboard(' ');
     await waitFor(() => expect(screen.getByRole('checkbox', { name: /buy milk/i })).toBeChecked());
     expect(screen.getByRole('checkbox', { name: /buy milk/i })).toHaveFocus();
-  });
-
-  it('focuses the Edit button after Save and after Cancel', async () => {
-    await renderLoaded([milk], jsonResponse({ ...milk, title: 'Buy oat milk' }));
-    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
-    await userEvent.keyboard('{Escape}');
-    expect(screen.getByRole('button', { name: /edit “buy milk”/i })).toHaveFocus();
-
-    await userEvent.click(screen.getByRole('button', { name: /edit “buy milk”/i }));
-    await userEvent.clear(screen.getByLabelText(/edit title/i));
-    await userEvent.type(screen.getByLabelText(/edit title/i), 'Buy oat milk{Enter}');
-    expect(await screen.findByRole('button', { name: /edit “buy oat milk”/i })).toHaveFocus();
   });
 
   it('focuses No when the delete confirmation opens, so a second Enter does not delete', async () => {

@@ -120,20 +120,6 @@ def test_list_breaks_created_at_ties_by_id_desc(client, settings, mongo_client):
     assert listed[0]["created_at"] == "2026-10-21T12:00:00Z"
 
 
-def test_patch_title(client):
-    todo = create(client, "Old")
-    response = client.patch(f"/api/todos/{todo['id']}", json={"title": "  New  "})
-    assert response.status_code == 200
-    updated = response.json()
-    assert updated["title"] == "New"
-    assert updated["completed"] is False
-    assert updated["id"] == todo["id"]
-    assert updated["created_at"] == todo["created_at"]
-    assert TIMESTAMP.match(updated["updated_at"])
-    assert updated["updated_at"] >= todo["updated_at"]
-    assert client.get("/api/todos").json()[0]["title"] == "New"
-
-
 def test_patch_completed_toggles(client):
     todo = create(client)
     done = client.patch(f"/api/todos/{todo['id']}", json={"completed": True})
@@ -145,14 +131,50 @@ def test_patch_completed_toggles(client):
     assert client.get("/api/todos").json()[0]["completed"] is False
 
 
-def test_patch_both_fields(client):
+TITLE_LOCKED = "Title cannot be changed"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"title": "New"},
+        {"title": "New", "completed": True},
+        {"title": "New", "completed": False},
+        {"completed": True, "title": "New"},
+        {"title": None, "completed": True},
+        {"title": "", "completed": True},
+        {"title": 5, "completed": True},
+        {"title": "Buy milk", "completed": True},
+    ],
+)
+def test_patch_rejects_title(client, body):
+    todo = create(client)
+    response = client.patch(f"/api/todos/{todo['id']}", json=body)
+    detail = assert_validation_error(response, TITLE_LOCKED)
+    assert detail[0]["loc"] == ["body", "title"]
+    assert detail[0]["type"] == "value_error"
+    assert client.get("/api/todos").json()[0] == todo
+
+
+def test_patch_title_on_missing_todo_is_422(client):
+    response = client.patch(
+        f"/api/todos/{uuid.uuid4()}", json={"title": "New", "completed": True}
+    )
+    assert_validation_error(response, TITLE_LOCKED)
+
+
+def test_patch_ignores_other_unknown_fields(client):
     todo = create(client)
     response = client.patch(
-        f"/api/todos/{todo['id']}", json={"title": "Both", "completed": True}
+        f"/api/todos/{todo['id']}",
+        json={"completed": True, "id": "abc", "created_at": "x", "extra": 1},
     )
-    assert response.status_code == 200
-    assert response.json()["title"] == "Both"
-    assert response.json()["completed"] is True
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["id"] == todo["id"]
+    assert updated["title"] == todo["title"]
+    assert updated["created_at"] == todo["created_at"]
+    assert updated["completed"] is True
 
 
 def test_patch_refreshes_updated_at(client, settings, mongo_client):
@@ -169,35 +191,29 @@ def test_patch_refreshes_updated_at(client, settings, mongo_client):
 
 
 @pytest.mark.parametrize("body", [{}, {"unknown": 1}])
-def test_patch_requires_a_field(client, body):
+def test_patch_requires_completed(client, body):
     todo = create(client)
     response = client.patch(f"/api/todos/{todo['id']}", json=body)
-    assert_validation_error(response, "At least one of title or completed is required")
+    detail = assert_validation_error(response)
+    assert detail[0]["loc"] == ["body", "completed"]
+    assert detail[0]["type"] == "missing"
+    assert client.get("/api/todos").json()[0] == todo
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        {"title": None},
-        {"title": 5},
         {"completed": None},
         {"completed": "true"},
         {"completed": 1},
         {"completed": 0},
-        {"title": "ok", "completed": "false"},
+        {"completed": "false"},
+        {"completed": [True]},
     ],
 )
 def test_patch_rejects_wrong_types(client, body):
     todo = create(client)
     assert_validation_error(client.patch(f"/api/todos/{todo['id']}", json=body))
-    assert client.get("/api/todos").json()[0] == todo
-
-
-@pytest.mark.parametrize("title", ["", "  ", "a" * 121])
-def test_patch_rejects_bad_title_length(client, title):
-    todo = create(client)
-    response = client.patch(f"/api/todos/{todo['id']}", json={"title": title})
-    assert_validation_error(response, TITLE_ERROR)
     assert client.get("/api/todos").json()[0] == todo
 
 

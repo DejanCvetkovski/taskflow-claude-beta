@@ -12,10 +12,10 @@ export interface TodoCreate {
   title: string;
 }
 
-/** At least one field is required by the contract. */
-export type TodoUpdate =
-  | { title: string; completed?: boolean }
-  | { title?: string; completed: boolean };
+/** The contract requires `completed` and rejects `title` with 422. */
+export interface TodoUpdate {
+  completed: boolean;
+}
 
 export interface ValidationErrorItem {
   loc: (string | number)[];
